@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crisis Response Dashboard – MVP</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <header>
+    <h1>Crisis Response Dashboard</h1>
+  </header>
+
+  <div class="container">
+
+    <section id="node-status">
+      <h2>Node Status</h2>
+      <div class="status-card">
+        <span class="label">ESP32 Node:</span>
+        <span class="value offline">Offline</span>
+      </div>
+    </section>
+
+    <section id="alerts">
+      <h2>Alerts</h2>
+      <div id="alert-feed" class="alert-feed">
+        <div class="alert-card">
+          <strong>Alert: Possible Scream Detected</strong>
+          <div class="alert-time">Received at 23:14</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>
+    <p>MVP v0.1 – Frontend Only</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
+<section id="sound-level">
+    <h2>Sound Level (Live)</h2>
+    <canvas id="soundChart" width="800" height="200"></canvas>
+  </section>
+  

@@ -1,0 +1,206 @@
+:root {
+    /* Base dark theme */
+    --color-background: #0d0d0d;
+    --color-surface: #1a1a1a;
+    --color-surface-light: #222;
+    --color-text: #e6e6e6;
+    --color-text-dim: #bbbbbb;
+  
+    /* Crimson theme accents */
+    --color-primary: #dc143c;        /* Crimson */
+    --color-primary-light: #ff2d55;  /* Lighter red */
+    --color-primary-dark: #960f2b;   /* Dark crimson */
+  
+    /* Alert styling */
+    --color-alert-border: #ff4b5c;  
+    --color-alert-glow: rgba(255, 75, 92, 0.45);
+  
+    /* Badges */
+    --color-online: #38ffb1;       
+    --color-online-bg: rgba(56, 255, 177, 0.12);
+  
+    --color-offline: #ff3347;
+    --color-offline-bg: rgba(255, 51, 71, 0.12);
+  
+    /* Card shadows */
+    --shadow-strong: 0 0 10px rgba(220, 20, 60, 0.35);
+    --shadow-soft: 0 0 6px rgba(255, 75, 92, 0.18);
+  }  
+
+  
+
+  body {
+    background: var(--color-background);
+    color: var(--color-text);
+  }
+  
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+  }  
+  
+  header {
+    background: linear-gradient(90deg, #000000, var(--color-primary-dark));
+    color: white;
+    padding: 30px;
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    box-shadow: var(--shadow-strong);
+  }
+  
+  
+  section {
+    padding: 20px;
+  }
+  
+  h2 {
+    margin-bottom: 10px;
+  }
+  
+  .status-card {
+    background: var(--color-surface);
+    padding: 18px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 350px;
+    border: 1px solid var(--color-surface-light);
+  }
+  
+  
+  .status-card .label {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  
+  .status-card .value {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  
+  .value {
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  
+  .value.offline {
+    color: var(--color-offline);
+    background: var(--color-offline-bg);
+  }
+  
+  .value.online {
+    color: var(--color-online);
+    background: var(--color-online-bg);
+  }
+  
+  
+  /* .offline {
+    color: red;
+    font-weight: bold;
+  } */
+  
+  footer {
+    text-align: center;
+    padding: 20px;
+    background: #0f0f0f;
+    color: var(--color-text-dim);
+    font-size: 14px;
+    letter-spacing: 0.5px;
+    border-top: 1px solid var(--color-primary-dark);
+  }  
+  
+  
+  .alert-card {
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    background: var(--color-surface);
+    margin-bottom: 18px;
+    border-radius: 10px;
+    border-left: 5px solid var(--color-primary-light);
+    box-shadow: var(--shadow-soft);
+    transition: all 0.25s ease;
+  }
+  
+  .alert-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-strong);
+  }
+  
+  .alert-icon {
+    font-size: 24px;
+    color: var(--color-primary-light);
+  }
+  
+  .alert-content {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .alert-time {
+    font-size: 12px;
+    margin-top: 4px;
+    color: var(--color-text-dim);
+  }
+  .alert-card.new {
+    animation: alertGlow 0.6s ease-out;
+  }
+  
+  @keyframes alertGlow {
+    0% { box-shadow: 0 0 0 rgba(255, 75, 92, 0); }
+    50% { box-shadow: 0 0 14px var(--color-alert-glow); }
+    100% { box-shadow: 0 0 0 rgba(255, 75, 92, 0); }
+  }
+  
+  
+  @keyframes glowIn {
+    0% {
+      box-shadow: 0 0 0 rgba(255, 0, 0, 0.0);
+    }
+    50% {
+      box-shadow: 0 0 12px rgba(255, 0, 0, 0.4);
+    }
+    100% {
+      box-shadow: 0 0 0 rgba(255, 0, 0, 0.0);
+    }
+  }
+  .value.offline {
+    animation: pulseOffline 1.5s infinite;
+  }
+  @keyframes pulseOffline {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+  }
+
+  .alert-type-danger { border-left-color: #dc143c; }
+.alert-type-warning { border-left-color: #ffae42; }
+.alert-type-info { border-left-color: #4da6ff; }
+.alert-type-system { border-left-color: #b366ff; }
+
+.animate-fade {
+    animation: fadeIn 0.5s ease forwards;
+  }
+  
+  #sound-level {
+    margin-top: 40px;
+  }
+  
+  #soundChart {
+    background: var(--color-surface);
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: var(--shadow-soft);
+  }
+  
+
+  
+  
+  
+  
