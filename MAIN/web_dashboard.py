@@ -4,8 +4,9 @@ import os
 import time
 import cv2
 import numpy as np
-import RPi.GPIO as GPIO
 import requests
+from gpiozero import Servo
+from time import sleep
 
 # -------------------------------------
 # PATHS
@@ -26,14 +27,12 @@ app = Flask(__name__)
 camera = cv2.VideoCapture(0)
 
 # -------------------------------------
-# HUMAN DETECTION (HOG + SVM, built into OpenCV)
+# HUMAN DETECTION (HOG)
 # -------------------------------------
 hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
-
 def detect_humans(frame):
-    """Detect humans using HOG + SVM (no external models required)."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     rects, weights = hog.detectMultiScale(
@@ -51,109 +50,53 @@ def detect_humans(frame):
 
 
 # -------------------------------------
-# FIRE & SMOKE DETECTION
+# SMOKE & FIRE DETECTION REMOVED
 # -------------------------------------
-prev_gray = None
-last_fire_alert = 0
-last_smoke_alert = 0
-last_human_alert = 0
-ALERT_COOLDOWN = 5  # seconds between repeated camera alerts
-
-
-def detect_fire(frame):
-    """Detect fire using HSV color thresholding."""
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-    # Tuned fire color range (orange/yellow/red)
-    lower = np.array([0, 120, 150])
-    upper = np.array([35, 255, 255])
-
-    mask = cv2.inRange(hsv, lower, upper)
-    mask = cv2.GaussianBlur(mask, (15, 15), 0)
-
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    boxes = []
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > 500:  # filter tiny noise
-            x, y, w, h = cv2.boundingRect(cnt)
-            boxes.append((x, y, x + w, y + h))
-
-    return boxes
-
-
-def detect_smoke(frame):
-    """Detect smoke from motion + low saturation and high brightness."""
-    global prev_gray
-
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (21, 21), 0)
-
-    if prev_gray is None:
-        prev_gray = blurred
-        return []
-
-    # Motion detection
-    diff = cv2.absdiff(prev_gray, blurred)
-    prev_gray = blurred
-
-    _, thresh = cv2.threshold(diff, 15, 255, cv2.THRESH_BINARY)
-
-    # Smoke color mask: low saturation, mid-high value
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    lower = np.array([0, 0, 120])
-    upper = np.array([180, 80, 255])
-    smoke_mask = cv2.inRange(hsv, lower, upper)
-
-    combined = cv2.bitwise_and(thresh, smoke_mask)
-
-    contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    boxes = []
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area > 800:  # avoid small noise
-            x, y, w, h = cv2.boundingRect(cnt)
-            boxes.append((x, y, x + w, y + h))
-
-    return boxes
-
+# (Everything commented or disabled by request)
 
 # -------------------------------------
-# SERVO CONTROL (Dummy safe pin)
+# SERVO CONTROL — Microstep + Zero Jitter
 # -------------------------------------
-GPIO.setmode(GPIO.BCM)
-SERVO_PIN = 17  # CHANGE TO REAL PIN WHEN KNOWN
-
 try:
-    GPIO.setup(SERVO_PIN, GPIO.OUT)
-    pwm = GPIO.PWM(SERVO_PIN, 50)
-    pwm.start(7.5)
+    # Safe pulse window for SG90 & MG90S clones (prevents jitter)
+    servo = Servo(13, min_pulse_width=0.0006, max_pulse_width=0.0023)
+    servo_position = 0.0  # range: -1 to +1
     servo_enabled = True
 except Exception as e:
-    print("Servo disabled (dummy mode):", e)
+    print("Servo disabled:", e)
     servo_enabled = False
-
-servo_position = 7.5
+    servo = None
 
 
 def move_servo(delta):
+    """
+    Move servo in small microsteps, then disable PWM entirely.
+    This eliminates jitter on all small hobby servos.
+    """
     global servo_position
+
     if not servo_enabled:
-        print("Dummy servo mode - ignoring move")
         return
 
-    servo_position = max(5.0, min(10.0, servo_position + delta))
-    pwm.ChangeDutyCycle(servo_position)
+    target = max(-1, min(1, servo_position + delta))
+
+    steps = 5
+    step_size = (target - servo_position) / steps
+
+    for _ in range(steps):
+        servo_position += step_size
+        servo.value = servo_position
+        sleep(0.05)  # smooth movement
+
+    servo.value = None  # disable PWM → zero jitter
 
 
 def servo_left():
-    move_servo(-0.5)
+    move_servo(-0.1)
 
 
 def servo_right():
-    move_servo(+0.5)
+    move_servo(+0.1)
 
 
 # -------------------------------------
@@ -168,7 +111,7 @@ def read_data():
 
 
 # -------------------------------------
-# ALERT LOG
+# ALERT LOG SYSTEM
 # -------------------------------------
 def read_alerts():
     try:
@@ -201,77 +144,34 @@ def alerts():
 
 
 # -------------------------------------
-# CAMERA + AI STREAM
+# CAMERA STREAM — HUMAN ONLY
 # -------------------------------------
+ALERT_COOLDOWN = 5
+last_human_alert = 0
+
 def generate_frames():
-    global last_fire_alert, last_smoke_alert, last_human_alert
+    global last_human_alert
 
     while True:
         ret, frame = camera.read()
         if not ret:
             continue
 
-        # HUMAN / FIRE / SMOKE detection
         humans = detect_humans(frame)
-        fire_boxes = detect_fire(frame)
-        smoke_boxes = detect_smoke(frame)
-
         human_detected = len(humans) > 0
-        fire_detected = len(fire_boxes) > 0
-        smoke_detected = len(smoke_boxes) > 0
 
-        # Draw humans (green)
         for (x1, y1, x2, y2) in humans:
-            cv2.rectangle(frame, (x1, y1), (x2, y2),
-                          (0, 255, 0), 2)
-            cv2.putText(frame, "HUMAN",
-                        (x1, y1 - 5),
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(frame, "HUMAN", (x1, y1 - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                         (0, 255, 0), 2)
 
-        # Draw fire (orange)
-        for (x1, y1, x2, y2) in fire_boxes:
-            cv2.rectangle(frame, (x1, y1), (x2, y2),
-                          (0, 140, 255), 2)
-            cv2.putText(frame, "FIRE",
-                        (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                        (0, 140, 255), 2)
-
-        # Draw smoke (light gray)
-        for (x1, y1, x2, y2) in smoke_boxes:
-            cv2.rectangle(frame, (x1, y1), (x2, y2),
-                          (200, 200, 200), 2)
-            cv2.putText(frame, "SMOKE",
-                        (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                        (200, 200, 200), 2)
-
         now = time.time()
 
-        # Throttled alert logging
         if human_detected and now - last_human_alert > ALERT_COOLDOWN:
             last_human_alert = now
-            try:
-                requests.get("http://127.0.0.1:8080/log_alert?msg=HUMAN_DETECTED_CAMERA")
-            except:
-                pass
+            requests.get("http://127.0.0.1:8080/log_alert?msg=HUMAN_DETECTED_CAMERA")
 
-        if fire_detected and now - last_fire_alert > ALERT_COOLDOWN:
-            last_fire_alert = now
-            try:
-                requests.get("http://127.0.0.1:8080/log_alert?msg=FIRE_DETECTED_CAMERA")
-            except:
-                pass
-
-        if smoke_detected and now - last_smoke_alert > ALERT_COOLDOWN:
-            last_smoke_alert = now
-            try:
-                requests.get("http://127.0.0.1:8080/log_alert?msg=SMOKE_DETECTED_CAMERA")
-            except:
-                pass
-
-        # Encode frame for MJPEG stream
         _, buffer = cv2.imencode(".jpg", frame)
         yield (b"--frame\r\n"
                b"Content-Type: image/jpeg\r\n\r\n" +
@@ -318,7 +218,7 @@ def camera_page():
 
 
 # -------------------------------------
-# HTML TEMPLATES
+# HTML Templates
 # -------------------------------------
 PAGE_HTML = """
 <!DOCTYPE html>
@@ -336,7 +236,7 @@ body { background:#111; color:#eee; font-family:Arial; padding:20px; }
 <body>
 
 <h1>🔥 Disaster Monitor Dashboard</h1>
-<a class="button" href="/camera">AI Camera (Human / Fire / Smoke)</a>
+<a class="button" href="/camera">AI Camera (Human Detection)</a>
 
 <div class="card">
   <h2>Live Readings</h2>
@@ -381,8 +281,6 @@ async function loop(){
 
     document.getElementById("gas").innerHTML = "Gas: " + gas;
     document.getElementById("temp").innerHTML = "Temp: " + temp;
-    document.getElementById("dist_mq3").innerHTML = "Gas Distance: " + (d.DIST_MQ3 || 0);
-    document.getElementById("dist_temp").innerHTML = "Temp Distance: " + (d.DIST_TEMP || 0);
 
     let danger = gas >= 350 || temp >= 60;
 
@@ -437,7 +335,7 @@ body { background:#111; color:#eee; font-family:Arial; text-align:center; paddin
 </head>
 <body>
 
-<h1>🎥 AI Camera (Human / Fire / Smoke)</h1>
+<h1>🎥 AI Camera (Human Detection)</h1>
 <img src="/video_feed" style="width:80%;border:3px solid #444;border-radius:10px;"/>
 
 <br><br>
