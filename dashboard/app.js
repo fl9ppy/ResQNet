@@ -1,160 +1,107 @@
 console.log("Dashboard frontend loaded.");
 
-function setNodeStatus(isOnline) {
-    const valueElement = document.querySelector(".value");
-  
-    if (isOnline) {
-      valueElement.textContent = "Online";
-      valueElement.classList.remove("offline");
-      valueElement.classList.add("online");
-    } else {
-      valueElement.textContent = "Offline";
-      valueElement.classList.remove("online");
-      valueElement.classList.add("offline");
-    }
-  }  
+/* ===========================
+   WebSocket Connection
+=========================== */
 
-function addAlert(message) {
-  const alertFeed = document.getElementById("alert-feed");
-
-  const alertCard = document.createElement("div");
-  alertCard.className = "alert-card";
-
-  const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  alertCard.innerHTML = `
-  <div class="alert-icon">⚠️</div>
-  <div class="alert-content">
-    <strong>${message}</strong>
-    <div class="alert-time">Received at ${timestamp}</div>
-  </div>
-`;
-
-  // Inserare alertă nouă la începutul listei
-  alertFeed.prepend(alertCard);
-
-  // Animație fade-in
-  alertCard.style.opacity = 0;
-  setTimeout(() => {
-    alertCard.style.transition = "opacity 0.4s ease";
-    alertCard.style.opacity = 1;
-  }, 10);
-
-  alertCard.classList.add("new");
-setTimeout(() => alertCard.classList.remove("new"), 800);
-
-}
-
-// SETUP WEBSOCKET (placeholder until backend is ready)
 let socket;
 
 function connectWebSocket() {
-  socket = new WebSocket("ws://localhost:8001/ws"); // backend-ul real va rula pe acest port
+    const url = "ws://" + window.location.hostname + ":8001";
+    console.log("Connecting WebSocket:", url);
 
-  socket.onopen = () => {
-    console.log("WebSocket connected!");
-    setNodeStatus(true);
-  };
+    socket = new WebSocket(url);
 
-  socket.onmessage = (event) => {
-    console.log("Received:", event.data);
-    const data = JSON.parse(event.data);
+    socket.onopen = () => console.log("WebSocket connected.");
 
-    if (data.type === "alert") {
-      addAlert(data.message);
-    }
+    socket.onclose = () => {
+        console.log("WebSocket disconnected. Reconnecting in 3s…");
+        setTimeout(connectWebSocket, 3000);
+    };
 
-    if (data.type === "status") {
-      setNodeStatus(data.online);
-    }
-  };
+    socket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+    };
 
-  socket.onclose = () => {
-    console.log("WebSocket disconnected. Reconnecting in 3s…");
-    setNodeStatus(false);
-    setTimeout(connectWebSocket, 3000);
-  };
+    socket.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("Received:", msg);
 
-  socket.onerror = (err) => {
-    console.error("WebSocket error:", err);
-    socket.close();
-  };
+        updateSensorCards(msg);
+        updateNodes(msg.nodes);
+
+        if (msg.alert) addAlert(msg.alert);
+    };
 }
 
 connectWebSocket();
 
-// TEMP: Simulare WebSocket dacă backend-ul nu rulează
-setTimeout(() => {
-    console.log("Simulated WS: sending test messages…");
-  
-    // Simulare online
-    setNodeStatus(true);
-  
-    // Simulare alertă la 3 sec.
-    setTimeout(() => {
-      addAlert("🚨 Test Alert: Scream detected (fake message)");
-    }, 3000);
-  
-  }, 2000);
+/* ===========================
+   Nodes UI
+=========================== */
 
-  alertCard.classList.add("alert-type-danger");
+function updateNodes(nodes) {
+    const container = document.getElementById("node-list");
+    container.innerHTML = "";
 
-  document.querySelector("section").classList.add("animate-fade");
+    if (!nodes || nodes.length === 0) {
+        container.innerHTML = `<i>No nodes detected.</i>`;
+        return;
+    }
 
-  // =============================
-// LIVE LINE CHART (NO LIBRARIES)
-// =============================
-
-const canvas = document.getElementById("soundChart");
-const ctx = canvas.getContext("2d");
-
-let dataPoints = [];
-const maxPoints = 50;   // câte puncte afișăm simultan
-
-function drawChart() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Axă orizontală
-  ctx.strokeStyle = "#444";
-  ctx.beginPath();
-  ctx.moveTo(0, canvas.height - 20);
-  ctx.lineTo(canvas.width, canvas.height - 20);
-  ctx.stroke();
-
-  if (dataPoints.length < 2) return;
-
-  ctx.strokeStyle = "#ff4b5c";  // crimson line
-  ctx.lineWidth = 2;
-  
-  ctx.beginPath();
-  let step = canvas.width / (dataPoints.length - 1);
-
-  dataPoints.forEach((value, i) => {
-    let x = i * step;
-    let y = canvas.height - 20 - value;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-
-  ctx.stroke();
+    nodes.forEach(n => {
+        const div = document.createElement("div");
+        div.className = "node-card";
+        div.innerHTML = `
+            <strong>${n.label}</strong><br>
+            Value: ${n.value.toFixed(1)} ${n.unit}<br>
+            Distance: ${n.distance.toFixed(2)} ${n.dist_unit}
+        `;
+        container.appendChild(div);
+    });
 }
 
-// Adaugă un nou punct pe grafic
-function addSoundLevel(value) {
-  dataPoints.push(value);
+/* ===========================
+   Sensor Cards
+=========================== */
 
-  if (dataPoints.length > maxPoints) {
-    dataPoints.shift();  // eliminăm cel mai vechi punct
-  }
-
-  drawChart();
+function updateSensorCards(msg) {
+    document.getElementById("mq3-value").textContent = msg.mq3.toFixed(1);
+    document.getElementById("temp-value").textContent = msg.temp.toFixed(1);
+    document.getElementById("dist-mq3-value").textContent = msg.dist_mq3.toFixed(2);
+    document.getElementById("dist-temp-value").textContent = msg.dist_temp.toFixed(2);
 }
-// Simulare valori sunet (0 - 150)
-setInterval(() => {
-    const simulatedValue = Math.random() * 150;
-    addSoundLevel(simulatedValue);
-  }, 500);
-  
 
-  
+/* ===========================
+   Alerts
+=========================== */
 
+function addAlert(message) {
+    const container = document.getElementById("alert-feed");
+
+    const card = document.createElement("div");
+    card.className = "alert-card";
+
+    card.innerHTML = `
+        <strong>${message}</strong>
+        <div class="alert-time">${new Date().toLocaleTimeString()}</div>
+    `;
+
+    container.prepend(card);
+}
+
+/* ===========================
+   Log Viewer
+=========================== */
+
+async function loadLog() {
+    const box = document.getElementById("log-box");
+    box.value = "Loading...";
+
+    try {
+        const res = await fetch("http://" + window.location.hostname + ":8081/log");
+        box.value = await res.text();
+    } catch (e) {
+        box.value = "Failed to load log.";
+    }
+}
