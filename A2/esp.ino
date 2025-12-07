@@ -1,7 +1,13 @@
 #include <WiFi.h>
 #include <esp_now.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEAdvertising.h>
+#include "esp_wifi.h"
 
-// Message structure
+// ==============================
+// ESP-NOW DATA STRUCT
+// ==============================
 typedef struct struct_message {
   char nodeId[8];
   float value;
@@ -9,79 +15,102 @@ typedef struct struct_message {
 
 struct_message dataToSend;
 
-// Replace with receiver MAC
+// ==============================
+// RECEIVER MAC ADDRESS (same as MQ3)
+// ==============================
 uint8_t receiverAddress[] = {0xFC, 0x01, 0x2C, 0xCC, 0x7C, 0x24};
 
-// NEW SEND CALLBACK FOR ESP32-S3 (Arduino ESP32 Core 3.x, IDF 5.x)
+// ==============================
 void OnDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {
   Serial.print("Send Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+}
 
-  // Print destination MAC (correct field name: des_addr)
-  char macStr[18];
-  snprintf(macStr, sizeof(macStr),
-           "%02X:%02X:%02X:%02X:%02X:%02X",
-           info->des_addr[0], info->des_addr[1], info->des_addr[2],
-           info->des_addr[3], info->des_addr[4], info->des_addr[5]);
-
-  Serial.print("Sent to: ");
-  Serial.println(macStr);
+// ==============================
+bool isNumeric(const String &s) {
+  if (s.length() == 0) return false;
+  int dots = 0;
+  int start = (s[0] == '-') ? 1 : 0;
+  for (int i = start; i < s.length(); i++) {
+    char c = s[i];
+    if (isdigit(c)) continue;
+    if (c == '.' && dots == 0) { dots++; continue; }
+    return false;
+  }
+  return true;
 }
 
 String serialBuffer = "";
+BLEAdvertising *pAdvertising;
 
+// ==============================
 void setup() {
   Serial.begin(115200);
+  Serial1.begin(9600, SERIAL_8N1, 17, 18);
 
-  // Read from Arduino UNO (Temperature sensor)
-  // GPIO16 = RX, GPIO17 = TX (TX not used)
-  Serial2.begin(9600, SERIAL_8N1, 16, 17);
+  delay(300);
+  Serial.println("TEMP Sender Booted");
 
+  // ------ ESP-NOW ------
   WiFi.mode(WIFI_STA);
+  esp_wifi_set_ps(WIFI_PS_NONE);
 
   if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
+    Serial.println("ESP-NOW Init Failed!");
     return;
   }
 
   esp_now_register_send_cb(OnDataSent);
 
-  // Add peer
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, receiverAddress, 6);
   peerInfo.channel = 0;
   peerInfo.encrypt = false;
-
-  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-    Serial.println("Failed to add peer");
-    return;
-  }
+  esp_now_add_peer(&peerInfo);
 
   strncpy(dataToSend.nodeId, "TEMP", sizeof(dataToSend.nodeId));
+
+  // ------ BLE BEACON ------
+  BLEDevice::init("TEMP_BEACON");
+
+  pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinInterval(160);
+  pAdvertising->setMaxInterval(240);
+
+  BLEAdvertisementData adv;
+  adv.setFlags(0x04);
+  adv.setName("TEMP_BEACON");
+
+  pAdvertising->setAdvertisementData(adv);
+  pAdvertising->start();
+
+  Serial.println("BLE Beacon Active: TEMP_BEACON");
 }
 
+// ==============================
 void loop() {
-  // Read incoming lines from UNO
-  while (Serial2.available()) {
-    char c = Serial2.read();
+  while (Serial1.available()) {
+    char c = Serial1.read();
 
     if (c == '\n' || c == '\r') {
 
-      // Only process if buffer contains something
-      if (serialBuffer.length() > 0) {
+      if (serialBuffer.length() > 0 && isNumeric(serialBuffer)) {
+        float tempC = serialBuffer.toFloat();
 
-        // Only proceed if the first character is a digit (avoids debug lines)
-        if (serialBuffer[0] >= '0' && serialBuffer[0] <= '9') {
-          float value = serialBuffer.toFloat();
-          dataToSend.value = value;
+        if (tempC > -30 && tempC < 150) {  // valid range
+          dataToSend.value = tempC;
 
-          esp_now_send(receiverAddress, (uint8_t *)&dataToSend, sizeof(dataToSend));
+          Serial.print("TEMP TX: ");
+          Serial.println(tempC);
+
+          esp_now_send(receiverAddress, (uint8_t*)&dataToSend, sizeof(dataToSend));
         }
-
-        serialBuffer = "";
       }
 
-    } else {
+      serialBuffer = "";
+    }
+    else {
       serialBuffer += c;
     }
   }

@@ -1,25 +1,21 @@
-// Assembly 2 - Arduino UNO (MQ-3 sensor)
-// Reads MQ-3 on A0 and sends the value over Serial to ESP32
-
-const int MQ3_PIN = A0;
-const unsigned long SEND_INTERVAL_MS = 1000;  // 1 second
-
-unsigned long lastSend = 0;
+// FINAL MQ3 ARDUINO CODE – clean numeric output only
 
 void setup() {
-  Serial.begin(9600); // This goes to ESP32 RX
+  Serial.begin(9600);      // Must match ESP32 Serial1 baud
+  delay(1000);
+  Serial.println("MQ3 Arduino Ready");
 }
 
 void loop() {
-  unsigned long now = millis();
-  if (now - lastSend >= SEND_INTERVAL_MS) {
-    lastSend = now;
+  int rawValue = analogRead(A0);   // 0–1023
 
-    int raw = analogRead(MQ3_PIN); // 0–1023
-    // Optional: convert to voltage for debug:
-    // float voltage = raw * (5.0 / 1023.0);
+  // Human-readable debug:
+  Serial.print("MQ3 Value: ");
+  Serial.println(rawValue);
 
-    // Send just the raw value as integer text
-    Serial.println(raw);
-  }
+  // *** DATA TO ESP32 ***
+  // The ESP32 sender will ONLY look at this pure number line.
+  Serial.println(rawValue);
+
+  delay(500);
 }

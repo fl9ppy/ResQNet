@@ -1,24 +1,43 @@
-// Assembly 3 - Arduino UNO (TEMP-02 / LM35-style sensor)
-// Reads temperature in °C and sends it as text over Serial
-
-const int TEMP_PIN = A0;
-const unsigned long SEND_INTERVAL_MS = 1000;  // 1 second
-
-unsigned long lastSend = 0;
+const int LM35_PIN = A0;
 
 void setup() {
-  Serial.begin(9600);  // To ESP32 RX
+  Serial.begin(9600);
 }
 
 void loop() {
-  unsigned long now = millis();
-  if (now - lastSend >= SEND_INTERVAL_MS) {
-    lastSend = now;
+  const int N = 15;
+  int readings[N];
 
-    int raw = analogRead(TEMP_PIN);
-    float voltage = raw * (5.0 / 1023.0);  // V
-    float tempC = voltage * 100.0;         // 10mV per °C → 100x
-
-    Serial.println(tempC);  // e.g. "24.56"
+  // Take multiple samples
+  for (int i = 0; i < N; i++) {
+    readings[i] = analogRead(LM35_PIN);
+    delay(5);
   }
+
+  // Find min & max
+  int minVal = readings[0];
+  int maxVal = readings[0];
+  long sum = 0;
+  for (int i = 0; i < N; i++) {
+    if (readings[i] < minVal) minVal = readings[i];
+    if (readings[i] > maxVal) maxVal = readings[i];
+    sum += readings[i];
+  }
+
+  // Drop min & max
+  sum -= minVal;
+  sum -= maxVal;
+  float avg = sum / float(N - 2);
+
+  float voltage = avg * (5.0 / 1023.0);
+  float tempC = voltage * 100.0;  // LM35
+
+  // Optional: clamp insane values
+  if (tempC < -20 || tempC > 120) {
+    // ignore, don't print
+  } else {
+    Serial.println(tempC, 1);
+  }
+
+  delay(200);  // ~5 Hz
 }
